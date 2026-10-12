@@ -8,6 +8,8 @@ pipeline {
     }
 
     environment {
+        // Dockerfile memakai BuildKit feature (RUN --mount cache .m2)
+        DOCKER_BUILDKIT = '1'
         GITOPS_REPOSITORY = 'https://github.com/rizkysiregar/homelabs-gitops.git'
         GITOPS_BRANCH = 'main'
         GITOPS_MANIFEST = 'apps/menujuhari/kustomization.yaml'
