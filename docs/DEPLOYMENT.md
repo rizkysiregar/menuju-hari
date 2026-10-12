@@ -27,36 +27,30 @@ git push (monorepo)
 
 ---
 
-## 1. Akses cluster via kubectl (dari laptop)
+## 1. Akses cluster — semua `kubectl` via SSH ke master node
 
-Anda tidak wajib SSH ke master untuk operasi harian — salin kubeconfig ke laptop sekali saja:
+Laptop **tidak perlu** kubectl/kubeconfig. Semua perintah cluster dijalankan langsung di master:
 
 ```bash
-# di laptop
-scp rizky@192.168.1.70:/etc/rancher/rke2/kubeconfig ~/.kube/menujuhari
-sed -i '' 's|127.0.0.1|192.168.1.70|' ~/.kube/menujuhari   # macOS; Linux: sed -i
-export KUBECONFIG=~/.kube/menujuhari
-kubectl get nodes
+ssh rizky@192.168.1.70
+sudo kubectl get nodes        # master 192.168.1.70 + worker 192.168.1.71
+sudo kubectl get pods -n feedzmore   # bukti cluster + Argo CD aktif
 ```
 
-Jika `kubectl get nodes` menampilkan `192.168.1.70` (master) & `192.168.1.71` (worker) → akses beres.
-> Catatan: user Anda di kubeconfig harus punya hak admin (RKE2 default `admin` memenuhi ini).
-
-Bukti kedua bahwa cluster memang siap: `kubectl get ingressclasses` harus ada `nginx` (RKE2 bawaan), dan `kubectl get pods -n feedzmore` jalan (feedzmore sudah live di cluster yang sama).
+> RKE2 menyediakan `kubectl` di `/usr/local/bin/kubectl` dengan kubeconfig `/etc/rancher/rke2/rke2.yaml` (hanya bisa dibaca root) — makanya pakai `sudo`. Berkas yang dibutuhkan di server dikirim via `scp`/SFTP (tahap 3).
 
 ---
 
-## 2. Commit & push DUA repo (tidak perlu upload ke master!)
+## 2. Commit & push DUA repo (tidak perlu upload manifest ke master!)
 
 ### 2a. Monorepo `menuju-hari` → GitHub
 
 ```bash
 cd ~/Documents/work/personal-project/menuju-hari
 git status            # pastikan .env TIDAK muncul (gitignore sudah menutup)
-git add Jenkinsfile .dockerignore services/ deploy/create-secrets.sh \
-        pom.xml Makefile .gitignore
-git commit -m "ci: pipeline jenkins multi-service + dockerfile generik"
-git push origin main   # sesuaikan branch
+git add -A
+git commit -m "feat: backend microservices + pipeline"
+git push origin main   # sesuaikan remote
 ```
 
 ### 2b. GitOps `homelabs-gitops` → GitHub
@@ -73,25 +67,33 @@ git push origin main
 ### Jawaban atas pertanyaan Anda
 > "apakah saya harus upload dulu file gitops ke master node lalu apply manual?"
 
-**Tidak.** File GitOps cukup berada di GitHub — Argo CD yang menarik dan menerapkan ke cluster. Tidak ada `kubectl apply -f` untuk manifest. Kubectl manual hanya dipakai di tahap 3 (Secret).
+**Tidak.** File GitOps cukup berada di GitHub — Argo CD yang menarik dan menerapkan ke cluster. Satu-satunya berkas yang dikirim ke server adalah **file Secret** (tahap 3) — dan itu dihapus dari server setelah apply.
 
 ---
 
-## 3. Buat Secret (SATU-SATUNYA langkah kubectl manual)
+## 3. Buat Secret (SATU-SATUNYA langkah manual, via SFTP + SSH)
 
-Kredensial tidak pernah di-commit, jadi dibuat sekali via kubectl dari nilai `.env` lokal di laptop:
+Kredensial tidak pernah berada di Git. Kemas dari `.env` lokal, kirim ke master, apply, hapus:
 
 ```bash
+# 1) Di laptop — kemas .env menjadi manifest secret:
 cd ~/Documents/work/personal-project/menuju-hari
-export KUBECONFIG=~/.kube/menujuhari
-kubectl create namespace menujuhari          # sekali, agar secret bisa dibuat
-./deploy/create-secrets.sh                   # membaca .env semua service otomatis
-kubectl -n menujuhari get secret menujuhari-secrets
+./deploy/pack-secrets.sh
+#    hasil: deploy/menujuhari-secrets.yaml (base64; tidak ter-track Git)
+
+# 2) Kirim ke master node:
+scp deploy/menujuhari-secrets.yaml rizky@192.168.1.70:/tmp/
+
+# 3) Di master node:
+ssh rizky@192.168.1.70
+sudo kubectl apply -f /tmp/menujuhari-secrets.yaml   # namespace + secret sekaligus
+sudo kubectl -n menujuhari get secret menujuhari-secrets
+rm /tmp/menujuhari-secrets.yaml                      # penting: hapus dari server
 ```
 
-Script ini mengambil: `DB_PASSWORD` (identity), `MIDTRANS_*` (payment), `MAIL_USERNAME/PASSWORD` (identity), `MINIO_*` (media) — semuanya dari file `.env` yang sudah Anda isi. Jalankan ulang kapan pun kredensial berubah (mis. saat ganti ke Midtrans produksi).
+Script `pack-secrets.sh` mengambil: `DB_PASSWORD` (identity), `MIDTRANS_*` (payment), `MAIL_USERNAME/PASSWORD` (identity), `MINIO_*` (media) — semuanya dari file `.env` yang sudah Anda isi. Jalankan ulang + ulangi kirim-apply kapan pun kredensial berubah (mis. saat pindah ke Midtrans produksi).
 
-> Upgrade keamanan berikutnya (opsional): Sealed Secrets atau SOPS agar secret juga bisa berjalan di Git terenkripsi. Untuk sekarang, "secret di cluster + tidak di Git" sudah memadai dan jauh lebih baik daripada plaintext di repo.
+> Upgrade keamanan berikutnya (opsional): Sealed Secrets atau SOPS agar secret juga bisa berada di Git terenkripsi. Untuk sekarang, "secret di cluster + tidak di Git + file sementara dihapus" sudah memadai dan jauh lebih baik daripada plaintext di repo.
 
 ---
 
@@ -124,9 +126,9 @@ UI Argo CD → **New App**:
 Setelah sync:
 
 ```bash
-kubectl -n menujuhari get pods -w
+sudo kubectl -n menujuhari get pods -w   # di master node (via SSH)
 # 6 pod: identity, invitation, catalog, media, order, payment — semua Running 1/1
-kubectl -n menujuhari get svc,ingress
+sudo kubectl -n menujuhari get svc,ingress
 ```
 
 Jika semua Running: **Flyway sudah migrasi ke DB VM** (cek log pod mana pun: `Successfully applied ... migrations`).
@@ -212,7 +214,7 @@ curl -s -b /tmp/ck.txt $BASE/invitation/v1/invitations/$INV_ID  # status: PUBLIS
 |---|---|---|
 | `CreateContainerConfigError` | Secret belum dibuat | Tahap 3: `./deploy/create-secrets.sh` |
 | `ImagePullBackOff` | Tag belum ada di Docker Hub | Jalankan Jenkins build dulu; cek nama image di Docker Hub |
-| `CrashLoopBackOff` saat start | DB tak reachable dari node, Flyway gagal | `kubectl -n menujuhari logs deploy/identity-service`; pastikan PostgreSQL VM menerima koneksi dari `192.168.1.70/.71` (firewall VM + `pg_hba.conf`) |
+| `CrashLoopBackOff` saat start | DB tak reachable dari node, Flyway gagal | `sudo kubectl -n menujuhari logs deploy/identity-service` (via SSH master); pastikan PostgreSQL VM menerima koneksi dari `192.168.1.70/.71` (firewall VM + `pg_hba.conf`) |
 | Readiness 0/1 | Redis/DB tidak terjangkau | `kubectl -n menujuhari exec -it deploy/identity-service -- sh -c 'command -v nc && nc -zv 192.168.1.50 6379'` |
 | Ingress 404 | Host/path tidak match | `kubectl -n menujuhari get ingress`; samakan hostname di Cloudflare & curl `-H "Host: ..."` |
 | Testcontainers gagal di Jenkins | docker.sock tidak terbaca | `docker exec <jenkins-container> ls -la /var/run/docker.sock`; pastikan `--network=host` + `--group-add` di stage Test |

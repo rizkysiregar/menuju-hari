@@ -19,3 +19,6 @@ node_modules/
 
 # Tool artifacts
 .commandcode/
+
+# Secret terkemas hasil pack-secrets.sh (RAHASIA — jangan di-commit)
+deploy/menujuhari-secrets.yaml
