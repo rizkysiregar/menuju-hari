@@ -46,10 +46,13 @@ pipeline {
 
                     def all = env.BACKEND_SERVICES.split(',') as List
 
-                    // shared-starter atau root pom berubah -> rebuild semua backend
+                    // Perubahan berikut memicu rebuild SEMUA service:
+                    // root pom, pipeline, .dockerignore, Dockerfile generik,
+                    // dan library bersama (security-starter).
                     def touchesAll = changedFiles.any {
-                        it == 'pom.xml' || it.startsWith('services/shared/') ||
-                        it.startsWith('.jenkins/') || it.startsWith('deploy/')
+                        it == 'pom.xml' || it == 'Jenkinsfile' ||
+                        it == '.dockerignore' || it == 'services/Dockerfile' ||
+                        it.startsWith('services/shared/')
                     }
 
                     if (changedFiles.contains('__ALL__') || touchesAll) {
