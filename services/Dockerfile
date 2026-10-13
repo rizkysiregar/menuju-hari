@@ -8,10 +8,9 @@ FROM maven:3.9-eclipse-temurin-25 AS build
 ARG SERVICE
 WORKDIR /src
 
-# POM dulu (layer cache): dependensi tidak diunduh ulang selama pom tak berubah
+# POM dulu (layer cache): dependensi tidak diunduh ulang selama pom tak berubah.
+# (Tidak perlu .mvn/mvnw — container memakai mvn bawaan image Maven.)
 COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
 COPY services/shared/security-starter/pom.xml services/shared/security-starter/
 COPY services/identity-service/pom.xml services/identity-service/
 COPY services/invitation-service/pom.xml services/invitation-service/
