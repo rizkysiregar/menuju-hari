@@ -27,6 +27,8 @@ public class MinioStorage {
 
 	private final MinioClient client;
 	private final String bucket;
+	private final String endpoint;
+	private final String accessKey;
 
 	public MinioStorage(MinioProperties props) {
 		this.client = MinioClient.builder()
@@ -34,11 +36,18 @@ public class MinioStorage {
 				.credentials(props.accessKey(), props.secretKey())
 				.build();
 		this.bucket = props.bucket();
+		this.endpoint = props.endpoint();
+		this.accessKey = props.accessKey() == null ? "" : props.accessKey();
 	}
 
 	@PostConstruct
 	void ensureBucket() {
 		try {
+			// Diagnostik aman: membantu mengenali kredensial/endpoint yang salah
+			// tanpa membocorkan nilai (hanya prefix access key).
+			String keyPrefix = accessKey.length() >= 4 ? accessKey.substring(0, 4) + "…" : "(pendek)";
+			org.slf4j.LoggerFactory.getLogger(MinioStorage.class)
+					.info("MinIO: endpoint={} bucket={} accessKeyPrefix={}", endpoint, bucket, keyPrefix);
 			if (!client.bucketExists(BucketExistsArgs.builder().bucket(bucket).build())) {
 				client.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
 			}

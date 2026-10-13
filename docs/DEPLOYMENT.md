@@ -212,7 +212,8 @@ curl -s -b /tmp/ck.txt $BASE/invitation/v1/invitations/$INV_ID  # status: PUBLIS
 
 | Gejala | Penyebab umum | Periksa |
 |---|---|---|
-| `CreateContainerConfigError` | Secret belum dibuat | Tahap 3: `./deploy/create-secrets.sh` |
+| `CreateContainerConfigError` | Secret belum dibuat | Tahap 3: `./deploy/pack-secrets.sh` lalu apply di master |
+| `InvalidAccessKeyId` (MinIO) / kredensial DB salah | Secret berisi nilai lama (mis. kredensial lokal) atau pod belum di-restart | Cek `sudo kubectl -n menujuhari logs deploy/media-service` baris `MinIO: endpoint=… accessKeyPrefix=…`; bandingkan dengan kredensial VM; perbaiki `.env` → pack → apply → **`sudo kubectl -n menujuhari rollout restart deployment/<svc>`** (env Secret hanya dibaca saat container dibuat — `apply` saja tidak menyegarkan pod lama) |
 | `ImagePullBackOff` | Tag belum ada di Docker Hub | Jalankan Jenkins build dulu; cek nama image di Docker Hub |
 | `CrashLoopBackOff` saat start | DB tak reachable dari node, Flyway gagal | `sudo kubectl -n menujuhari logs deploy/identity-service` (via SSH master); pastikan PostgreSQL VM menerima koneksi dari `192.168.1.70/.71` (firewall VM + `pg_hba.conf`) |
 | Readiness 0/1 | Redis/DB tidak terjangkau | `kubectl -n menujuhari exec -it deploy/identity-service -- sh -c 'command -v nc && nc -zv 192.168.1.50 6379'` |
