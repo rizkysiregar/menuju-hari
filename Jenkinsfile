@@ -147,15 +147,18 @@ pipeline {
                         )
                     ]) {
                         sh '''
+                            export SERVICE_NAME
                             for SVC in $(echo "$CHANGED_SERVICES" | tr ',' ' '); do
+                                export SERVICE_NAME="$IMAGE_PREFIX-$SVC"
                                 docker run --rm \\
                                   --user "$(id -u):$(id -g)" \\
                                   --volumes-from "${JENKINS_CONTAINER_ID:-$HOSTNAME}" \\
                                   --workdir "$PWD" \\
+                                  --env SERVICE_NAME \\
                                   --env IMAGE_TAG \\
                                   "$YQ_IMAGE" \\
                                   -i \\
-                                  "(.images[] | select(.name == \\"${IMAGE_PREFIX}-${SVC}\\")).newTag = strenv(IMAGE_TAG)" \\
+                                  '(.images[] | select(.name == strenv(SERVICE_NAME))).newTag = strenv(IMAGE_TAG)' \\
                                   "$GITOPS_MANIFEST"
                             done
 
