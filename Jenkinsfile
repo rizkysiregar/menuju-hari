@@ -8,8 +8,9 @@ pipeline {
     }
 
     environment {
-        // Dockerfile memakai BuildKit feature (RUN --mount cache .m2)
-        DOCKER_BUILDKIT = '1'
+        // Paksa legacy builder: plugin buildx tidak selalu terpasang di
+        // container Jenkins; Dockerfile dirancang kompatibel legacy.
+        DOCKER_BUILDKIT = '0'
         GITOPS_REPOSITORY = 'https://github.com/rizkysiregar/homelabs-gitops.git'
         GITOPS_BRANCH = 'main'
         GITOPS_MANIFEST = 'apps/menujuhari/kustomization.yaml'
