@@ -81,12 +81,20 @@ public class PaymentService {
 	 */
 	@Transactional
 	public void handleNotification(Map<String, Object> payload) {
-		String orderId = str(payload, "order_id");
+		// Nilai dari pihak ketiga dipotong defensif agar payload aneh tidak
+		// pernah menjatuhkan service (kolom 128; spec order_id normal <=50).
+		String orderId = truncate(str(payload, "order_id"), 128);
 		String statusCode = str(payload, "status_code");
 		String grossAmount = str(payload, "gross_amount");
 		String signatureKey = str(payload, "signature_key");
 		String transactionStatus = str(payload, "transaction_status");
 		String fraudStatus = payload.get("fraud_status") == null ? null : String.valueOf(payload.get("fraud_status"));
+
+		if (orderId == null || orderId.isBlank()) {
+			// Notifikasi tanpa order_id tidak bisa diaudit maupun dicocokkan.
+			log.warn("Webhook tanpa order_id diabaikan (status_code={})", statusCode);
+			return;
+		}
 
 		boolean signatureValid = gateway.verifySignature(orderId, statusCode, grossAmount, signatureKey);
 		Payment payment = paymentRepository.findByGatewayOrderId(orderId).orElse(null);
@@ -205,5 +213,12 @@ public class PaymentService {
 	private static String str(Map<String, Object> payload, String key) {
 		Object value = payload.get(key);
 		return value == null ? null : String.valueOf(value);
+	}
+
+	private static String truncate(String value, int max) {
+		if (value == null || value.length() <= max) {
+			return value;
+		}
+		return value.substring(0, max);
 	}
 }

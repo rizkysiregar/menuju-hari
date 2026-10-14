@@ -27,7 +27,7 @@ public class Payment {
 	private String orderNumber;
 
 	/** order_id di sisi gateway; attempt > 1 diberi suffix -rN (order_id Midtrans unik). */
-	@Column(name = "gateway_order_id", nullable = false, length = 64)
+	@Column(name = "gateway_order_id", nullable = false, length = 128)
 	private String gatewayOrderId;
 
 	@Column(nullable = false)

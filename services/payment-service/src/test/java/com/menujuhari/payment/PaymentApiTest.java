@@ -239,4 +239,27 @@ class PaymentApiTest {
 			STUB_STATUS.set(new MidtransGateway.TransactionStatus("pending", null, "201", "49000.00", null));
 		}
 	}
+
+	/** Sesuai perilaku "Test URL" Midtrans: order_id sintetis panjang (66 char). */
+	@Test
+	@Order(9)
+	void webhookUjiMidtransDenganOrderIdPanjangTetap200() throws Exception {
+		String longId = "payment_notif_test_G459997237_9923e226-5d80-49e6-a84a-581a776d9252";
+		ResponseEntity<String> response = webhook(longId, "settlement", "200", "49000.00", true, null);
+		assertThat(response.getStatusCode().value()).isEqualTo(200);
+		var rows = jdbcTemplate.queryForMap(
+				"SELECT count(*) AS c FROM payment_events WHERE gateway_order_id = ?", longId);
+		assertThat(Long.valueOf(String.valueOf(rows.get("c")))).isEqualTo(1L);
+	}
+
+	/** Payload tanpa order_id tidak boleh menjatuhkan service (dulu: 500). */
+	@Test
+	@Order(10)
+	void webhookTanpaOrderIdTetap200() {
+		String sig = MidtransSignature.compute("", "200", "1.00", STUB_SERVER_KEY);
+		ResponseEntity<String> response = rest.exchange("/v1/webhooks/payments/midtrans", HttpMethod.POST,
+				new HttpEntity<>("{\"status_code\":\"200\",\"gross_amount\":\"1.00\",\"signature_key\":\""
+						+ sig + "\",\"transaction_status\":\"settlement\"}", jsonHeaders()), String.class);
+		assertThat(response.getStatusCode().value()).isEqualTo(200);
+	}
 }

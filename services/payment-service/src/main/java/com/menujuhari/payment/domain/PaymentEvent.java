@@ -25,10 +25,10 @@ public class PaymentEvent {
 	@UuidGenerator
 	private UUID id;
 
-	@Column(name = "gateway_order_id", nullable = false, length = 64)
+	@Column(name = "gateway_order_id", nullable = false, length = 128)
 	private String gatewayOrderId;
 
-	@Column(name = "order_number", nullable = false, length = 64)
+	@Column(name = "order_number", nullable = false, length = 128)
 	private String orderNumber;
 
 	@Column(name = "event_type", nullable = false, length = 40)
