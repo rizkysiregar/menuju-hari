@@ -7,6 +7,13 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
+    parameters {
+        // Pengaman: "Build with Parameters" -> centang untuk rebuild semua service
+        // tanpa bergantung pada deteksi diff (mis. saat build sebelumnya keliru dilewati).
+        booleanParam(name: 'FORCE_BUILD_ALL', defaultValue: false,
+            description: 'Paksa build & push SEMUA service (abaikan deteksi perubahan)')
+    }
+
     environment {
         // Paksa legacy builder: plugin buildx tidak selalu terpasang di
         // container Jenkins; Dockerfile dirancang kompatibel legacy.
@@ -39,29 +46,47 @@ pipeline {
         stage('Determine Changed Services') {
             steps {
                 script {
-                    def baseCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'
-                    def changedFiles = sh(
-                        script: "git diff --name-only ${baseCommit}..HEAD || echo '__ALL__'",
-                        returnStdout: true
-                    ).trim().split('\n') as List
-
                     def all = env.BACKEND_SERVICES.split(',') as List
 
-                    // Perubahan berikut memicu rebuild SEMUA service:
-                    // root pom, pipeline, .dockerignore, Dockerfile generik,
-                    // dan library bersama (security-starter).
-                    def touchesAll = changedFiles.any {
-                        it == 'pom.xml' || it == 'Jenkinsfile' ||
-                        it == '.dockerignore' || it == 'services/Dockerfile' ||
-                        it.startsWith('services/shared/')
-                    }
-
-                    if (changedFiles.contains('__ALL__') || touchesAll) {
+                    if (params.FORCE_BUILD_ALL) {
+                        // Pengaman manual: "Build with Parameters" -> paksa semua.
                         env.CHANGED_SERVICES = all.join(',')
-                    } else {
-                        env.CHANGED_SERVICES = all.findAll { svc ->
-                            changedFiles.any { it.startsWith("services/${svc}/") }
-                        }.join(',')
+                        echo "FORCE_BUILD_ALL aktif -> membangun semua service."
+                    }
+                    else {
+                        // Basis diff = revisi build SEBELUMNYA (status apa pun).
+                        // Bila tidak ada / sama dengan HEAD (build ulang commit yang
+                        // sama), pakai commit induk agar perubahan tetap terdeteksi.
+                        def base = env.GIT_PREVIOUS_COMMIT
+                        if (!base || base == env.GIT_COMMIT) {
+                            base = 'HEAD~1'
+                        }
+                        def changedFiles = sh(
+                            script: "git diff --name-only ${base}..HEAD || echo '__ALL__'",
+                            returnStdout: true
+                        ).trim().split('\n') as List
+
+                        // Perubahan berikut memicu rebuild SEMUA service:
+                        // root pom, pipeline, .dockerignore, Dockerfile generik,
+                        // dan library bersama (security-starter).
+                        def touchesAll = changedFiles.any {
+                            it == 'pom.xml' || it == 'Jenkinsfile' ||
+                            it == '.dockerignore' || it == 'services/Dockerfile' ||
+                            it.startsWith('services/shared/')
+                        }
+
+                        if (changedFiles.contains('__ALL__') || touchesAll) {
+                            env.CHANGED_SERVICES = all.join(',')
+                        }
+                        else {
+                            // PENTING: folder service bernama "<svc>-service"
+                            // (mis. services/payment-service/...), bukan "<svc>".
+                            env.CHANGED_SERVICES = all.findAll { svc ->
+                                changedFiles.any { it.startsWith("services/${svc}-service/") }
+                            }.join(',')
+                        }
+                        echo "Diff ${base}..HEAD -> ${changedFiles.size()} file; service: " +
+                            (env.CHANGED_SERVICES?.trim() ?: '(tidak ada)')
                     }
 
                     if (env.CHANGED_SERVICES?.trim()) {
